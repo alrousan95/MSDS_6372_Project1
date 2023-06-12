@@ -1,0 +1,394 @@
+---
+title: "Mohammad Al-Rousan Project 1 Code"
+author: "Mohammad Al-Rousan"
+date: "2023-06-06"
+output: html_document
+---
+
+```{r}
+
+
+```
+
+
+```{r}
+library(naniar)
+library(caret)
+library(ggplot2)
+library(Matrix)
+library(glmnet)
+library(olsrr)
+library(corrplot)
+library(RColorBrewer)
+library(funModeling)
+library(tidyverse)
+library(Hmisc)
+library(leaps)
+library(olsrr)
+library(readr)
+library(haven)
+library(matrixStats)
+library(reshape2)
+library(kableExtra)
+library(mlbench)
+
+
+```
+
+```{r}
+#Data Overview
+car <-read.csv("/Users/mohammadal-rousan/Downloads/car_dataset.csv")
+
+vis_miss(car)
+
+#Create a different DF so the original data cannot be touched
+carData <- car
+
+carData$MSRP <- log(carData$MSRP)
+
+cars2 <- car[rowSums(is.na(car)) > 0,]
+
+#Change NA's 
+carData[is.na(carData)] <- 0
+carData[c(8696:8698),6] <- 2
+carData[c(8699:8715),6] <- 4
+carData[c(4204:4207),5] <- 168
+carData[c(4915:4920),5] <- 193
+carData[c(5826,5831,5832,5840,5841),5] <- 301
+carData[c(6909,6911,6917,6919),5] <- 305
+
+
+#Convert to factors
+carData$Make <- as.factor(carData$Make)
+carData$Year <- as.factor(carData$Year)
+carData$Engine.Fuel.Type <- as.factor(carData$Engine.Fuel.Type)
+carData$Transmission.Type <- as.factor(carData$Transmission.Type)
+carData$Number.of.Doors <- as.factor(carData$Number.of.Doors)
+carData$Market.Category <- as.factor(carData$Market.Category)
+carData$Vehicle.Size <- as.factor(carData$Vehicle.Size)
+carData$Vehicle.Style <- as.factor(carData$Vehicle.Style)
+
+#Look at missing data 
+vis_miss(carData)
+#There's none!!
+
+
+```
+
+```{r}
+# Obejective 1 Run a standard EDA
+
+plot(carData$Vehicle.Style)
+#I did this to see the type of cars used and give a general expectation on what to look at
+
+#Running Graphs to get an idea 
+p <- ggplot(carData, aes(fill=Popularity, y=Vehicle.Style, x=MSRP)) + 
+    geom_bar(position="dodge", stat="identity")
+p + theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1))
+
+#EDA
+ggplot(carData, aes(x = MSRP, y = Popularity,color=Vehicle.Style)) 
+  geom_point()
+
+ggplot(data = carData, mapping = aes(x = MSRP, y = Popularity)) +
+    geom_point() +
+    geom_smooth(aes(color = Vehicle.Style)) +
+    facet_wrap( ~Vehicle.Style)
+
+
+
+#Histogram of MSRP
+ggplot(carData, aes(x=(MSRP))) + 
+ geom_histogram(aes(y=..density..), colour="black", fill="white")+
+ geom_density(alpha=.2, fill="#FF6666") 
+
+#Log transformed history of MSRP
+ggplot(carData, aes(x=log(MSRP))) + 
+ geom_histogram(aes(y=..density..), colour="black", fill="white")+
+ geom_density(alpha=.2, fill="#FF6666") 
+
+
+#Histogram of popularity
+ggplot(carData, aes(x=(Popularity))) + 
+ geom_histogram(aes(y=..density..), colour="black", fill="white")+
+ geom_density(alpha=.2, fill="#FF6666") 
+
+
+M <-cor(carData[,c(5,6,13,14,15,16)])
+corrplot(M, type="upper", order="hclust",
+         col=brewer.pal(n=8, name="RdYlBu"))
+
+
+ggplot(carData, aes(x=Engine.HP, y=MSRP)) + 
+  geom_point()+
+  geom_smooth(method = "lm")
+
+ggplot(carData, aes(x=Popularity, y=MSRP)) + 
+  geom_point()+
+  geom_smooth()
+
+ggplot(carData, aes(x=Vehicle.Style, y=MSRP)) + 
+  geom_point()+
+  geom_smooth() + theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1))
+
+ggplot(carData, aes(x=Engine.Cylinders, y=MSRP)) + 
+  geom_point()+
+  geom_smooth() + theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1))
+```
+
+```{r}
+#Model Selection
+
+ss <- sample(1:3,size=nrow(carData),replace=TRUE,prob=c(0.8,0.1,0.1))
+train <- carData[ss==1,]
+test <- carData[ss==2,]
+cvr <- carData[ss==3,]
+
+reg.fwd=regsubsets(MSRP~.,data=train,method="forward",nvmax=15)
+bics<-summary(reg.fwd)$bic
+plot(bics,type="l",ylab="BIC",xlab="# of predictors")
+
+reg.fwd$nbest
+
+regfwdMdl <- lm(MSRP~.,data=train)
+summary(regfwdMdl)
+
+reg.bwd=regsubsets(MSRP~.,data=train,method="backward",nvmax=15)
+bics<-summary(reg.bwd)$bic
+
+
+# Adjr2
+adjr2<-summary(reg.fwd)$adjr2
+plot(adjr2,type="l",ylab="Adjusted R-squared",xlab="# of predictors")
+
+ 
+MallowCP <- summary(reg.fwd)$cp
+plot(MallowCP,type="l",ylab="Mallow's CP",xlab="# of predictors")
+
+#Linear Regression Model
+edaModel <- lm(MSRP~Engine.HP+Vehicle.Style+Engine.Cylinders,data=carData)
+summary(edaModel)
+plot(edaModel)
+
+
+ols_plot_resid_fit(edaModel)
+ols_plot_resid_lev(edaModel)
+ols_plot_resid_qq(edaModel)
+ols_plot_resid_hist(edaModel)
+ols_plot_cooksd_bar(edaModel)
+
+p <- predict(edaModel, cvr)
+error <- (p- cvr$MSRP)
+RMSE_Model <- sqrt(mean(error^2))
+
+ptest <- predict(edaModel, test)
+error1 <- (ptest- cvr$MSRP)
+RMSE_NewData <- sqrt(mean(error1^2))
+Method <- c("Train/Test Split")
+ModelRMSE <- c(RMSE_Model)
+RMSENewData <- c(RMSE_NewData)
+
+table1 <- data.frame(Method, ModelRMSE, RMSENewData)
+
+kable(table1) %>% kable_styling(c("striped", "bordered")) %>%column_spec(2:3, border_left = T)
+
+
+#Full model
+fullModel <- lm(MSRP~.,data = carData)
+summary(fullModel)
+ols_plot_resid_fit(fullModel)
+ols_plot_resid_lev(fullModel)
+ols_plot_resid_qq(fullModel)
+ols_plot_resid_hist(fullModel)
+ols_plot_cooksd_bar(fullModel)
+
+p <- predict(fullModel, test)
+error <- (p- test$MSRP)
+RMSE_Model <- sqrt(mean(error^2))
+
+ptest <- predict(fullModel, test)
+error1 <- (ptest- carData$MSRP)
+RMSE_NewData <- sqrt(mean(error1^2))
+Method <- c("Train/Test Split")
+ModelRMSE <- c(RMSE_Model)
+RMSENewData <- c(RMSE_NewData)
+
+table1 <- data.frame(Method, ModelRMSE, RMSENewData)
+
+kable(table1) %>% kable_styling(c("striped", "bordered")) %>%column_spec(2:3, border_left = T)
+
+plot(fullModel)
+
+# Set number of times you would like to repeat the sampling/testing 
+iterations = 1:100
+ 
+# the initial values for the columns (might not need these now that ive switched to building columns) 
+rmseSimple = c()
+rmseComplex = c()
+ 
+ 
+# Start of Loop
+for(i in iterations){
+  # Resets sample every iteration 
+  index<- sample(1:dim(carData)[1],128,replace=F)
+  train<- carData[index,]
+  test<- carData[-index,]
+  
+ 
+  # the model runs 
+  edaModel 
+  
+  fullModel 
+  
+  
+  # predictors and column building
+  predictions1 <- edaModel %>% predict(test)
+  
+  d1 = data.frame(R2 = R2(predictions1,test$MSRP),
+                  RMSE = RMSE(predictions1,test$MSRP), MAE = MAE(predictions1, test$MSRP))
+  rmseSimple = c(rmseSimple,d1$RMSE)
+  
+  predictions2 <- fullModel %>% predict(test)
+ 
+  d2 = data.frame(R2 = R2(predictions2,test$MSRP),
+                RMSE = RMSE(predictions2,test$MSRP), MAE = MAE(predictions2, test$MSRP))
+  rmseComplex = c(rmseComplex, d2$RMSE)
+  
+ 
+  # End for
+}
+
+# putting the dataframe together and outputting relevant statistics
+Model.Average.RMSE = cbind(rmseSimple, rmseComplex)
+rmsedf = as.data.frame(Model.Average.RMSE)
+Means = colMeans(Model.Average.RMSE)
+SDs = round(colSds(Model.Average.RMSE), 3)
+range1 = max(rmsedf$rmseSimple) - min(rmsedf$rmseSimple)
+range2 = max(rmsedf$rmseComplex) - min(rmsedf$rmseComplex)
+rmsedf1 = melt(rmsedf,rmse = c("n", "rmse"))
+
+
+
+summary(Model.Average.RMSE)
+
+
+
+
+Pred1 <- data.frame(Value = predictions1, Model = "Simple")
+Pred2 <- data.frame(Value = predictions2, Model = "Complex")
+PredActual <- data.frame(ActualValue = test$MSRP)
+PredAll <- rbind(Pred1, Pred2)
+PredActual <- rbind(PredActual,PredActual)
+PredAll <- cbind(PredAll, PredActual)
+PredAll %>% ggplot(aes(x = Value, y = ActualValue, fill = Model)) + geom_point(aes(color = Model)) + geom_smooth(formula = y~x)+theme_minimal()
+ 
+# Column
+rmsedf1 %>% group_by(variable) %>% summarise(mean = (mean(value))) %>% 
+  ggplot(aes(x = reorder(variable, -mean), y = mean, fill = variable)) + geom_col(width = 0.75) + geom_text(aes(label = round(mean,3), vjust = -0.5)) + 
+  ggtitle("Average RMSE over 100 Shuffles (Linear Models)") + xlab("Model #") + ylab("Mean RMSE")+theme_minimal()
+ 
+# Boxplot
+rmsedf1 %>%  ggplot(aes(x = variable, y = value)) + geom_boxplot(aes(fill = variable)) +
+  ggtitle("Mean RMSE Distribution by Model") + ylab("Mean RMSE") + coord_flip() + 
+  theme(axis.title.y = element_blank(), axis.text.y = element_blank(), axis.ticks.y = element_blank())
+# Histogram
+rmsedf1 %>%  ggplot(aes(x = value)) + geom_histogram(aes(fill = variable)) +
+  ggtitle("Mean RMSE Distribution by Model") + xlab("Mean RMSE") + 
+  theme(axis.title.y = element_blank(), axis.text.y = element_blank(), axis.ticks.y = element_blank())
+ 
+# Here we can see there is no significant difference between the models in terms of RMSE
+t.test(rmseSimple,rmseComplex, var.equal = FALSE)
+
+
+```
+
+
+```{r}
+#Objective 2
+trctrl <- trainControl(method = "repeatedcv", number = 10, repeats = 3)
+set.seed(3333)
+knn_fit <- train(MSRP ~., data = train[,c(5,6,13,14,15,16)], method = "knn",
+ trControl=trctrl,
+ preProcess = c("center", "scale"),
+ tuneLength = 10)
+
+(knn_fit)
+
+test_pred <- predict(knn_fit, newdata = test)
+test_pred
+
+plot(knn_fit)
+plot(knn_fit, print.thres = 0.5, type="S")
+
+
+set.seed(400)
+ctrl <- trainControl(method="repeatedcv",repeats = 3) #,classProbs=TRUE,summaryFunction = twoClassSummary)
+
+# Random forrest
+rfFit <- train(MSRP ~ ., data = train[,c(5,6,13,14,15,16)], method = "rf", trControl = ctrl, preProcess = c("center","scale"), tuneLength = 20)
+
+rfFit
+plot(rfFit)
+```
+
+
+```{r}
+set.seed(123)
+train_indices <- sample(1:nrow(carData), nrow(carData)*0.7)
+train_data <- carData[train_indices, ]
+test_data <- carData[-train_indices, ]
+
+train_data[] <- lapply(train_data, function(x) {
+  if (is.character(x)) factor(x) else x
+})
+
+test_data[] <- lapply(test_data, function(x) {
+  if (is.character(x)) factor(x) else x
+})
+
+# Load the library
+library(gbm)
+
+# Fit the Gradient Boosting model
+set.seed(123)
+gbm_model <- gbm(MSRP ~ ., data = train_data,
+                 distribution = "gaussian",
+                 n.trees = 5000,
+                 interaction.depth = 4,
+                 shrinkage = 0.01,
+                 cv.folds = 5, # 5-fold cross-validation
+                 n.minobsinnode = 10)
+
+# Make predictions
+gbm_pred <- predict(gbm_model, newdata = test_data, n.trees = gbm_model$gbm.call$best.trees)
+
+# Compute MSE for the GBM model
+gbm_mse <- mean((test_data$MSRP - gbm_pred)^2)
+
+# Display MSE
+gbm_mse
+
+
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
