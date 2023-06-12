@@ -1,0 +1,212 @@
+---
+title: "Project 1"
+author: "Mohammad Al-Rousan"
+date: "2023-06-12"
+output: html_document
+---
+
+```{r}
+library(naniar)
+library(caret)
+library(ggplot2)
+library(Matrix)
+library(glmnet)
+library(olsrr)
+library(corrplot)
+library(RColorBrewer)
+library(funModeling)
+library(tidyverse)
+library(Hmisc)
+library(leaps)
+library(olsrr)
+library(readr)
+library(haven)
+library(matrixStats)
+library(reshape2)
+library(kableExtra)
+library(mlbench)
+```
+
+```{r}
+#Data exploration
+car <-read.csv("/Users/mohammadal-rousan/Downloads/car_dataset.csv")
+
+carData <- car
+
+carData$MSRP <- log(carData$MSRP)
+
+cars2 <- car[rowSums(is.na(car)) > 0,]
+
+#Get rid of the NA's  
+carData[is.na(carData)] <- 0
+carData[c(8696:8698),6] <- 2
+carData[c(8699:8715),6] <- 4
+carData[c(4204:4207),5] <- 168
+carData[c(4915:4920),5] <- 193
+carData[c(5826,5831,5832,5840,5841),5] <- 301
+carData[c(6909,6911,6917,6919),5] <- 305
+
+
+#Factors
+carData$Make <- as.factor(carData$Make)
+carData$Year <- as.factor(carData$Year)
+carData$Engine.Fuel.Type <- as.factor(carData$Engine.Fuel.Type)
+carData$Transmission.Type <- as.factor(carData$Transmission.Type)
+carData$Number.of.Doors <- as.factor(carData$Number.of.Doors)
+carData$Market.Category <- as.factor(carData$Market.Category)
+carData$Vehicle.Size <- as.factor(carData$Vehicle.Size)
+carData$Vehicle.Style <- as.factor(carData$Vehicle.Style)
+
+```
+
+
+```{r}
+simpleLM <- lm(MSRP~., data = carData)
+plot(simpleLM)
+
+#Based on the plots, it might be a good idea to log MSRP, but I need more physical proof
+
+#Graphics of MSRP proving why we need to log MSRP
+ggplot(carData, aes(x=(MSRP))) + 
+ geom_histogram(aes(y=..density..), colour="black", fill="white")+
+ geom_density(alpha=.2, fill="red") 
+
+#Log transformed history of MSRP
+ggplot(carData, aes(x=log(MSRP))) + 
+ geom_histogram(aes(y=..density..), colour="black", fill="white")+
+ geom_density(alpha=.2, fill="red") 
+
+#When we log MSRP, the graph looks much cleaner
+```
+
+```{r}
+#Perfrom a stepwise model selection
+
+install.packages("MASS")
+library(MASS)
+#Trying to find the columns used
+summary(cars2)
+str(cars2)
+
+#Calculate the correlations
+cor_matrix <- cor(car[sapply(cars2, is.numeric)])
+cor_target <- cor_matrix["MSRP",]
+cor_target <- cor_target[!is.na(cor_target)]
+
+
+#Select predictors based on correlation strength
+cor_threshold <- 0.3
+response_variables <- "MSRP"
+predictor_variables <- names(cars2)[!names(cars2) %in% response_variable]
+
+print(potential_predictors)
+
+test_model <- lm(MSRP~., data = cars2)
+
+step_model <- step(test_model, direction = "both")
+
+#Testing the different models from the stepwise
+model1 <- lm(MSRP~ Make + Model + Year + Engine.Fuel.Type + Engine.HP + Engine.Cylinders + 
+    Transmission.Type + Driven_Wheels + Number.of.Doors + Market.Category + 
+    Vehicle.Size + Vehicle.Style + highway.MPG + city.mpg + Popularity, data = carData)
+plot(model1)
+
+model2 <- lm(MSRP ~ Make + Model + Year + Engine.Fuel.Type + Engine.HP + Engine.Cylinders + 
+    Transmission.Type + Driven_Wheels + Number.of.Doors + Market.Category + 
+    Vehicle.Size + Vehicle.Style + highway.MPG + city.mpg, data = carData)
+
+model3 <- lm(MSRP~Engine.HP+Vehicle.Style+Engine.Cylinders,data=carData)
+
+
+summary(model1)
+summary(model2)
+summary(model3)
+
+#Decided to go with model 3 for my EDA model since it produced the best r squared and adjusted r squared
+
+edaModel <- lm(MSRP~Engine.HP+Vehicle.Style+Engine.Cylinders,data=carData)
+
+predicted_values1 <- predict(edaModel, newdata = carData)
+
+rmse <- rmse(carData$MSRP, predicted_values1)
+
+
+fullModel <- lm(MSRP~., data = carData)
+summary(fullModel)
+plot(model)
+#MUCH better plots, more cloudy in the residuals and more linearity in the QQ plots
+
+
+predicted_values2 <- predict(fullModel, newdata = carData)
+
+rmse <- rmse(carData$MSRP, predicted_values2)
+
+rmse()
+```
+
+```{r}
+#Objective 2
+set.seed(123)
+train_indices <- sample(1:nrow(carData), nrow(carData)*0.7)
+train_data <- carData[train_indices, ]
+test_data <- carData[-train_indices, ]
+
+train_data[] <- lapply(train_data, function(x) {
+  if (is.character(x)) factor(x) else x
+})
+
+test_data[] <- lapply(test_data, function(x) {
+  if (is.character(x)) factor(x) else x
+})
+
+# Load the library
+library(gbm)
+
+# Fit the Gradient Boosting model
+set.seed(123)
+gbm_model <- gbm(MSRP ~ ., data = train_data,
+                 distribution = "gaussian",
+                 n.trees = 5000,
+                 interaction.depth = 4,
+                 shrinkage = 0.01,
+                 cv.folds = 5, # 5-fold cross-validation
+                 n.minobsinnode = 10)
+
+# Make predictions
+gbm_pred <- predict(gbm_model, newdata = test_data, n.trees = gbm_model$gbm.call$best.trees)
+
+# Compute MSE for the GBM model
+gbm_mse <- mean((test_data$MSRP - gbm_pred)^2)
+
+# Display MSE
+gbm_mse
+
+###Knn model
+
+# Load the "class" library
+library(class)
+
+# Fit the KNN model for edaModel
+k_eda <- 5  # Set the number of neighbors for edaModel (you can adjust this value)
+knnModel_eda <- knn(train = carData[, c("Engine.HP", "Vehicle.Style", "Engine.Cylinders")], 
+                    test = carData[, c("Engine.HP", "Vehicle.Style", "Engine.Cylinders")],
+                    cl = carData$MSRP,
+                    k = k_eda)
+
+# Calculate RMSE for edaModel using KNN
+rmse_eda <- sqrt(mean((carData$MSRP - knnModel_eda)^2))
+
+
+# Fit the KNN model for fullModel
+k_full <- 5  # Set the number of neighbors for fullModel (you can adjust this value)
+knnModel_full <- knn(train = carData[, -which(names(carData) == "MSRP")], 
+                     test = carData[, -which(names(carData) == "MSRP")],
+                     cl = carData$MSRP,
+                     k = k_full)
+
+# Calculate RMSE for fullModel using KNN
+rmse_full <- sqrt(mean((carData$MSRP - knnModel_full)^2))
+
+
+
+```
