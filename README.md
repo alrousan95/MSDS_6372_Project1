@@ -1,1 +1,4 @@
-# MSDS_6372_Project1
+# Title: MSRP Prediction Data Science Project
+
+Description:
+The main objective is to identify key relationships between predictors and the response variable in an interpretable manner. Before delving into model building, the data should be thoroughly examined, and necessary data preprocessing steps such as handling missing data and cleaning variable names should be performed. The data should then be split into a train/validation split, with the training data used for the subsequent analysis. The regression model should be developed with the goal of identifying significant predictors and interpreting their effects. The interpretation should include hypothesis testing, regression coefficient interpretation, confidence intervals, and consideration of practical versus statistical significance. Additionally, the model should be utilized to address any relevant additional questions that arise from the analysis.
